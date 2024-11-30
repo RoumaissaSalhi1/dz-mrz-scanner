@@ -1,0 +1,104 @@
+import 'package:camera/camera.dart';
+import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+
+abstract class NewIdCardCameraController extends GetxController {
+  late CameraController cameraController;
+  var isCameraInitialized = false.obs;
+  late TextRecognizer textRecognizer;
+  RxString detectedText = ''.obs;
+
+  Future<void> initializeCamera();
+  Future<void> processCameraFrame(CameraImage image);
+}
+
+class NewIdCardCameraControllerImp extends NewIdCardCameraController {
+  @override
+  void onInit() async {
+    super.onInit();
+    textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
+    await initializeCamera();
+  }
+
+  @override
+  Future<void> initializeCamera() async {
+    final cameras = await availableCameras();
+
+    if (cameras.isNotEmpty) {
+      // Set to high resolution
+      cameraController = CameraController(
+        cameras[0],
+        ResolutionPreset.medium,
+        enableAudio: false, // Disable audio if not needed
+      );
+
+      try {
+        await cameraController.initialize();
+        isCameraInitialized.value = true;
+
+        // Start processing frames
+        cameraController.startImageStream((image) => processCameraFrame(image));
+      } catch (e) {
+        Get.snackbar("Camera Error", "Failed to initialize: $e");
+      }
+    } else {
+      Get.snackbar("Error", "No cameras available");
+    }
+  }
+
+  @override
+  Future<void> processCameraFrame(CameraImage image) async {
+    final rotation = InputImageRotationValue.fromRawValue(
+            cameraController.description.sensorOrientation) ??
+        InputImageRotation.rotation0deg;
+
+    // Get the exact format from the camera image
+    final inputImageFormat = getImageFormat(image);
+
+    print('Image format: $inputImageFormat');
+
+    final inputImage = InputImage.fromBytes(
+      bytes: image.planes[0].bytes,
+      metadata: InputImageMetadata(
+        size: Size(image.width.toDouble(), image.height.toDouble()),
+        rotation: rotation,
+        format: inputImageFormat,
+        bytesPerRow: image.planes[0].bytesPerRow,
+      ),
+    );
+
+    try {
+      final recognizedText = await textRecognizer.processImage(inputImage);
+      print('OCR Result: ${recognizedText.text}');
+      detectedText.value = recognizedText.text;
+    } catch (e) {
+      print('Error processing image: $e');
+    }
+  }
+
+  @override
+  void onClose() {
+    cameraController.dispose();
+    textRecognizer.close();
+    super.onClose();
+  }
+
+  // Function to get the exact format of the camera image
+  InputImageFormat getImageFormat(CameraImage image) {
+    switch (image.format.raw) {
+      case 35: // Format: yuv_420_888
+        return InputImageFormat.yuv_420_888;
+      case 39: // Format: nv21
+        return InputImageFormat.nv21;
+      case 20: // Format: yv12
+        return InputImageFormat.yv12;
+      case 21: // Format: yuv420 (on iOS devices)
+        return InputImageFormat.yuv420;
+      case 111: // Format: bgra8888 (on iOS devices)
+        return InputImageFormat.bgra8888;
+      default:
+        throw Exception('Unsupported image format: ${image.format.raw}');
+    }
+  }
+}

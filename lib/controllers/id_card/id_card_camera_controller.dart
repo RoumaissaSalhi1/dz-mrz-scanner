@@ -29,10 +29,7 @@ class IdCardCameraControllerImp extends IdCardCameraController {
   Future<void> initializeCamera() async {
     cameras = await availableCameras();
     if (cameras.isNotEmpty) {
-      _cameraController = CameraController(
-        cameras[0], // Use the rear camera
-        ResolutionPreset.high,
-      );
+      _cameraController = CameraController(cameras[0], ResolutionPreset.high);
       await _cameraController.initialize();
       isCameraInitialized.value = true;
     } else {
